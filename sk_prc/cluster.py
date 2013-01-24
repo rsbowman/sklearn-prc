@@ -61,7 +61,7 @@ class CutClustering(BaseEstimator, ClusterMixin):
         for i in range(self.n_trials):
             final_ordering, bd, labels = self._fit_once(X, ordering)
             width = np.sort(bd)
-            if le_lex(width, min_width):
+            if lt_lex(width, min_width):
                 best_order = final_ordering
                 best_bd = bd
                 best_labels = labels
@@ -92,12 +92,12 @@ class CutClustering(BaseEstimator, ClusterMixin):
     def width(self):
         return np.sort(self._boundary)
 
-def le_lex(a, b):
-    """ return true if array a compares <= to array b lexicographically 
+def lt_lex(a, b):
+    """ return true if array a compares < to array b lexicographically 
     """
     for i in range(len(a)):
-        if a[i] <= b[i]: return True
-        elif a[i] >= b[i]: return False
+        if a[i] < b[i]: return True
+        elif a[i] > b[i]: return False
     return False
 
 class PinchRatioCppClustering(CutClustering):

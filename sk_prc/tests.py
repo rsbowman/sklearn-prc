@@ -9,6 +9,8 @@ from classify import BinaryTiloClassifier, \
     PinchRatioCutStrategy, NearestCutStrategy, find_closest_min
 from cluster import pinch_ratios, normalized_ratios, sparse_ratios
 from cluster import PinchRatioClustering, PinchRatioCppClustering
+from cluster import lt_lex
+
 import similarity
 
 np.set_printoptions(precision=2)
@@ -25,6 +27,14 @@ class CommonTests(TestCase):
         assert_array_equal(sparse_ratios(bds),
                            np.array([1., 1., 1., .5, 1., 1., 1., 1.]))
 
+    def test_lt_lext(self):
+        self.assertTrue(lt_lex([1, 1, 1], [2, 2, 2]))
+        self.assertFalse(lt_lex([2, 1, 1], [1, 2, 2]))
+        self.assertTrue(lt_lex([1, 1, 1], [1, 2, 2]))
+        self.assertTrue(lt_lex([1, 1, 1], [1, 1, 2]))
+        self.assertFalse(lt_lex([1, 1, 1], [1, 1, 1]))
+        self.assertFalse(lt_lex([1, 1, 1], [1, 1, 0]))
+        
 class ClusteringTests(TestCase):
     def make_blobs(self, n_samples):
         from sklearn.datasets import make_blobs        
