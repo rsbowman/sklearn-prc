@@ -1,7 +1,11 @@
 # PRC Clustering and Classification Using sklearn
 
+This is a python package implementing several clustering and
+classification algorithms that use [Pinch Ratio Clustering][1].  To
+use it, you'll need [scikit-learn][2] (tested with versions 0.12 and
+0.13) as well as the python bindings to the [C++ library][3].
 
-To use, you'll need to 
+Install with
 
     python setup.py install
     
@@ -53,8 +57,7 @@ parametrized by a cut strategy and an adjacency matrix strategy.
     ('a', 'b')
     
 Here is an example of multiclass classification using bits of sklearn.
-(We only use some of the iris data for speed -- this code is run with
-the tests in tests.py)
+(We only use some of the iris data for speed)
 
     >>> from sklearn.datasets import load_iris
     >>> from sklearn.multiclass import OneVsOneClassifier
@@ -69,3 +72,6 @@ the tests in tests.py)
     1
 
 
+[1]: http://arxiv.org/abs/1206.0771
+[2]: http://scikit-learn.org/
+[3]: http://cs.okstate.edu/~doug/src/prc/
