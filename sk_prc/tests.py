@@ -3,6 +3,8 @@ import numpy as np
 from numpy.testing import assert_array_equal
 from sklearn.multiclass import OneVsRestClassifier, OneVsOneClassifier
 from sklearn import metrics
+import networkx as nx
+
 import prc
 
 from classify import BinaryTiloClassifier, \
@@ -63,7 +65,19 @@ class ClusteringTests(TestCase):
         c = PinchRatioClustering(2, similarity.AdjacencyMatrix())
         guessed_labels = c.fit_predict(adj_matrix)
         assert_array_equal(labels, guessed_labels)
-        
+
+    def test_pinch_ratios(self):
+        g = nx.Graph()
+        g.add_weighted_edges_from([(0, 1, 0.8), (1, 2, 0.7),
+                                   (2, 4, 0.2), (3, 4, 0.65),
+                                   (0, 2, 0.6), (1, 3, 0.1),
+                                   (3, 5, 0.75), (4, 5, 0.85)])
+        adj_matrix = np.array(nx.adjacency_matrix(g))
+        for cl_algo in (PinchRatioClustering, PinchRatioCppClustering):
+            c = cl_algo(2, similarity.AdjacencyMatrix())
+            c.fit(adj_matrix)
+            self.assertAlmostEqual(c.pinch_ratios[0], 0.3 / 1.4)
+            
 class BinaryClassifierTests(TestCase):
     def setUp(self):
         self.two_class_pts = np.array(

@@ -39,6 +39,50 @@ def sparse_ratios(boundaries):
 #
 #######################
 
+def compute_pr_cluster_indices(ordering, boundary, n_clusters,
+                               compute_thick_part):
+    pinch_ratios = []
+    
+    def find_split(C, boundary):
+        best_pr = sys.float_info.max
+        index = -1
+        for i in range(1, len(C) - 2):
+            if (boundary[C[i - 1]] >= boundary[C[i]] and 
+                boundary[C[i]] <= boundary[C[i + 1]]):
+                thick_width = compute_thick_part(boundary, C, i)
+                pr = boundary[C[i]] / thick_width
+                if pr < best_pr:
+                    best_pr = pr
+                    index = i
+        return best_pr, index + 1
+
+    queue = PriorityQueue()
+    C = range(len(ordering))
+    pr, idx = find_split(C, boundary)
+    queue.put((pr, idx, C))
+    pinch_ratios.append(pr)
+    while queue.qsize() < n_clusters:
+        q, t, C_i = queue.get()
+        if t < 0:
+            # no split loc
+            break
+        C_j, C_k = C_i[:t], C_i[t:]
+        pr1, idx1 = find_split(C_j, boundary)
+        pr2, idx2 = find_split(C_k, boundary)
+        pinch_ratios.append(pr1)
+        pinch_ratios.append(pr2)
+        queue.put((pr1, idx1, C_j))
+        queue.put((pr2, idx2, C_k))
+
+    cluster_indices = []
+    n_actual_clusters = min(queue.qsize(), n_clusters)
+    for i in range(n_actual_clusters):
+        q, t, C_i = queue.get()
+        cluster_indices.append(C_i)
+
+    pinch_ratios = sorted(pinch_ratios)[:n_actual_clusters - 1]
+    return pinch_ratios, cluster_indices
+    
 ## base class
 class CutClustering(BaseEstimator, ClusterMixin):
     def __init__(self, n_clusters, adj_matrix_strategy,
@@ -47,6 +91,7 @@ class CutClustering(BaseEstimator, ClusterMixin):
         self.adj_matrix_strategy = adj_matrix_strategy
         self.n_trials = n_trials
         self.initial_ordering = initial_ordering
+        self._pinch_ratios = None
         
     def fit(self, X):
         from numpy.random.mtrand import RandomState
@@ -59,18 +104,20 @@ class CutClustering(BaseEstimator, ClusterMixin):
         else:
             ordering = np.arange(len(X), dtype=int)
         for i in range(self.n_trials):
-            final_ordering, bd, labels = self._fit_once(X, ordering)
+            final_ordering, bd, labels, prs = self._fit_once(X, ordering)
             width = np.sort(bd)
             if lt_lex(width, min_width):
                 best_order = final_ordering
                 best_bd = bd
                 best_labels = labels
+                best_pinch_ratios = prs
                 min_width = width
             randomizer.shuffle(ordering)
 
         self._ordering = best_order
         self._boundary = best_bd
         self.labels_ = best_labels
+        self._pinch_ratios = best_pinch_ratios
         
     @property
     def labels(self):
@@ -78,7 +125,7 @@ class CutClustering(BaseEstimator, ClusterMixin):
         
     @property
     def pinch_ratios(self):
-        return pinch_ratios(self._boundary)
+        return self._pinch_ratios #pinch_ratios(self._boundary)
 
     @property
     def ordering(self):
@@ -100,6 +147,10 @@ def lt_lex(a, b):
         elif a[i] > b[i]: return False
     return False
 
+def compute_thick_part_PR(boundary, C, i):
+    return min(boundary[C[:i]].max(),
+               boundary[C[i + 1:-1]].max())
+    
 class PinchRatioCppClustering(CutClustering):
     def __init__(self, n_clusters, adj_matrix_strategy,
                  n_trials=1, initial_ordering=None):
@@ -119,7 +170,10 @@ class PinchRatioCppClustering(CutClustering):
         ordering = np.fromiter(order.vdata, dtype=int)
         boundary = np.fromiter(order.b.b, dtype=float)[:-1]
         labels = np.fromiter(labels, dtype=int)
-        return ordering, boundary, labels
+        pinch_ratios, _ = compute_pr_cluster_indices(
+            ordering, boundary, self.n_clusters,
+            compute_thick_part_PR)
+        return ordering, boundary, labels, pinch_ratios
 
 class PinchRatioClustering(CutClustering):
     def __init__(self, n_clusters, adj_matrix_strategy,
@@ -144,55 +198,27 @@ class PinchRatioClustering(CutClustering):
         #print 'BDR', boundary
         #print 'PRS', pinch_ratios(boundary)
         #print 'ORD', ordering
-        clusters = self._find_clusters(ordering, boundary)
+        pinch_ratios, clusters = self._find_clusters(ordering, boundary)
         labels = np.zeros(N, dtype=int)
         for i, cluster in enumerate(clusters):
             labels[cluster] = i
 
-        return ordering, boundary, labels
+        return ordering, boundary, labels, pinch_ratios
 
     def _compute_thick_part(self, boundary, C, i):
-        return min(boundary[C[:i]].max(),
-                   boundary[C[i + 1:-1]].max())
+        return compute_thick_part_PR(boundary, C, i)
         
     def _find_clusters(self, ordering, boundary):
-        def find_split(C, boundary):
-            best_pr = sys.float_info.max
-            index = -1
-            for i in range(1, len(C) - 2):
-                if (boundary[C[i - 1]] >= boundary[C[i]] and 
-                    boundary[C[i]] <= boundary[C[i + 1]]):
-                    thick_width = self._compute_thick_part(boundary, C, i)
-                    pr = boundary[C[i]] / thick_width
-                    if pr < best_pr:
-                        best_pr = pr
-                        index = i
-            return best_pr, index + 1
-        
-        queue = PriorityQueue()
-        C = range(len(ordering))
-        pr, idx = find_split(C, boundary)
-        queue.put((pr, idx, C))
-        while queue.qsize() < self.n_clusters:
-            q, t, C_i = queue.get()
-            if t < 0:
-                # no split loc
-                break
-            C_j, C_k = C_i[:t], C_i[t:]
-            pr1, idx1 = find_split(C_j, boundary)
-            pr2, idx2 = find_split(C_k, boundary)
-            queue.put((pr1, idx1, C_j))
-            queue.put((pr2, idx2, C_k))
+        prs, cluster_indices = compute_pr_cluster_indices(
+            ordering, boundary, self.n_clusters,
+            self._compute_thick_part)
 
         clusters = []
-        i = 0
-        while i < self.n_clusters and not queue.empty():
-            q, t, C = queue.get()
+        for C in cluster_indices:
             if C:
                 clusters.append(np.array([ordering[v] for v in C]))
-            i += 1
 
-        return clusters
+        return prs, clusters
         
     @property
     def labels(self):
@@ -218,7 +244,7 @@ def create_seed_order(data, cluster_algo):
         [np.where(labels == i)[0] for i in np.unique(labels)])
 
 def main(argv):
-    import argparse
+    import argparse, random
     import scipy
     from sklearn import cluster, metrics, clone
     import similarity
@@ -244,15 +270,27 @@ def main(argv):
                         help="comma sep. list of feature indices to include")
     parser.add_argument('--exclude', type=parse_features, default=[],
                         help="comma sep. list of feature indices to exclude")
+    parser.add_argument('--max-samples', type=int, default=-1,
+                        help="sample data so it has this size")
+    
     args = parser.parse_args()
 
-    data, labels = args.data, args.labels
-    unique_labels = np.unique(labels)
-    n_clusters = len(unique_labels)
     n_trials = args.trials
     knn_strat = similarity.KNN(args.k)
     gauss_strat = similarity.Gaussian(args.sigma)
 
+    if args.max_samples > 0:
+        indices = np.array(random.sample(xrange(len(args.data)),
+                                         args.max_samples))
+        data = args.data[indices]
+        labels = args.labels[indices]
+    else:
+        data = args.data
+        labels = args.labels
+
+    unique_labels = np.unique(labels)
+    n_clusters = len(unique_labels)
+        
     if args.features and args.exclude:
         print "can't both include and exclude features"
         return 1
@@ -260,17 +298,19 @@ def main(argv):
     if args.features:
         data = data[:, args.features]
     if args.exclude:
-        included_indices = np.delete(np.arange(len(data)), args.exclude)
+        included_indices = np.delete(np.arange(len(data[0])),
+                                     args.exclude)
         data = data[:, included_indices]
-        
-    class SpectralWrapper(BaseEstimator):
-        def __init__(self, n_clusters, adj_strat):
-            self._c = cluster.SpectralClustering(n_clusters,
-                                                 affinity='precomputed')
-            self.adj_strat = adj_strat
-        def fit(self, X):
-            self._fitted = self._c.fit(X)
-            self.labels_ = self._fitted.labels_
+
+    
+    # class SpectralWrapper(BaseEstimator):
+    #     def __init__(self, n_clusters, adj_strat):
+    #         self._c = cluster.SpectralClustering(n_clusters,
+    #                                              affinity='precomputed')
+    #         self.adj_strat = adj_strat
+    #     def fit(self, X):
+    #         self._fitted = self._c.fit(X)
+    #         self.labels_ = self._fitted.labels_
 
     gauss_adj_matrix = similarity.Gaussian(args.sigma)(data)
     knn_adj_matrix = similarity.KNN(args.k)(data)
@@ -307,6 +347,14 @@ def main(argv):
                            "Affinity  ", "DBSCAN"],
                           ["", " .3f", " .3f", " .3f", " .3f"])
     print prc_table.header()
+
+    table = TextTable(["Method         ", "RAND"],
+                      ["", " .3f"])
+    for name, classifier in comparison_classifiers:
+        guesses = classifier.labels_
+        score = metrics.adjusted_rand_score(guesses, labels)
+        print table.row(name, score)
+    
     for strategy_name, adj_matrix in [("Gauss", gauss_adj_matrix),
                                       ("KNN", knn_adj_matrix)]:
         for name, cl_base in prc_classifiers:
@@ -328,12 +376,6 @@ def main(argv):
             print prc_table.row(name + "/" + strategy_name,
                                 score, *initialized_scores)
 
-    table = TextTable(["Method         ", "RAND"],
-                      ["", " .3f"])
-    for name, classifier in comparison_classifiers:
-        guesses = classifier.labels_
-        score = metrics.adjusted_rand_score(guesses, labels)
-        print table.row(name, score)
         
     return 0
         
