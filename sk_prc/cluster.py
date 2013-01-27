@@ -41,8 +41,6 @@ def sparse_ratios(boundaries):
 
 def compute_pr_cluster_indices(ordering, boundary, n_clusters,
                                compute_thick_part):
-    pinch_ratios = []
-    
     def find_split(C, boundary):
         best_pr = sys.float_info.max
         index = -1
@@ -56,6 +54,7 @@ def compute_pr_cluster_indices(ordering, boundary, n_clusters,
                     index = i
         return best_pr, index + 1
 
+    pinch_ratios = []
     queue = PriorityQueue()
     C = range(len(ordering))
     pr, idx = find_split(C, boundary)
@@ -74,11 +73,12 @@ def compute_pr_cluster_indices(ordering, boundary, n_clusters,
         queue.put((pr1, idx1, C_j))
         queue.put((pr2, idx2, C_k))
 
-    cluster_indices = []
-    n_actual_clusters = min(queue.qsize(), n_clusters)
-    for i in range(n_actual_clusters):
+    cluster_indices, n_actual_clusters = [], 0
+    for i in range(min(queue.qsize(), n_clusters)):
         q, t, C_i = queue.get()
-        cluster_indices.append(C_i)
+        if C_i:
+            cluster_indices.append(C_i)
+            n_actual_clusters += 1
 
     pinch_ratios = sorted(pinch_ratios)[:n_actual_clusters - 1]
     return pinch_ratios, cluster_indices
@@ -215,8 +215,7 @@ class PinchRatioClustering(CutClustering):
 
         clusters = []
         for C in cluster_indices:
-            if C:
-                clusters.append(np.array([ordering[v] for v in C]))
+            clusters.append(np.array([ordering[v] for v in C]))
 
         return prs, clusters
         
