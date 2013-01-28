@@ -325,15 +325,25 @@ def main(argv):
             n_clusters, similarity.AdjacencyMatrix(), n_trials)),
         ]
     comparison_classifiers = [
-        ('Spectral/Gauss', cluster.SpectralClustering(
-            n_clusters, affinity="precomputed").fit(gauss_adj_matrix)),
-        ('Spectral/KNN', cluster.SpectralClustering(
-            n_clusters, affinity="precomputed").fit(knn_adj_matrix)),        
         ('Affinity', cluster.AffinityPropagation().fit(data)),
         ('KMeans', cluster.KMeans(n_clusters).fit(data)),
         ('MeanShift', cluster.MeanShift().fit(data)),
         ('DBScan', cluster.DBSCAN().fit(data))
     ]
+
+    try:
+        comparison_classifiers.append(
+            ('Spectral/Gauss', cluster.SpectralClustering(
+                n_clusters, affinity="precomputed").fit(gauss_adj_matrix)))
+    except ValueError:
+        pass
+
+    try:
+        comparison_classifiers.append(
+            ('Spectral/KNN', cluster.SpectralClustering(
+                n_clusters, affinity="precomputed").fit(knn_adj_matrix)))
+    except ValueError:
+        pass
 
     seed_clusterers = [
         cluster.KMeans(n_clusters, random_state=117),
