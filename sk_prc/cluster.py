@@ -40,7 +40,7 @@ def sparse_ratios(boundaries):
 #######################
 
 def compute_pr_cluster_indices(ordering, boundary, n_clusters,
-                               compute_thick_part):
+                               compute_thick_part, min_thick=0.0001):
     def find_split(C, boundary):
         best_pr = sys.float_info.max
         index = -1
@@ -48,7 +48,7 @@ def compute_pr_cluster_indices(ordering, boundary, n_clusters,
             if (boundary[C[i - 1]] >= boundary[C[i]] and 
                 boundary[C[i]] <= boundary[C[i + 1]]):
                 thick_width = compute_thick_part(boundary, C, i)
-                pr = boundary[C[i]] / thick_width
+                pr = boundary[C[i]] / max(thick_width, min_thick)
                 if pr < best_pr:
                     best_pr = pr
                     index = i
