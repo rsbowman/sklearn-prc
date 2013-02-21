@@ -25,14 +25,33 @@ PRC.  An example:
     >>> from sklearn.datasets import make_blobs
     >>> from sklearn.metrics import adjusted_rand_score
     >>> data, labels = make_blobs(100, 2, 2, random_state=106)
-    >>> ams = similarity.KNN(10)
+    >>> knn_strategy = similarity.KNN(10)
     >>> c = PinchRatioClustering(n_clusters=2, 
-    ...                          adj_matrix_strategy=ams,
+    ...                          adj_matrix_strategy=knn_strategy,
     ...                          n_trials=1)
     >>> c.fit(data)
     >>> adjusted_rand_score(c.labels, labels)
     1.0
     
+Note that we can set the number of clusters we want, the adjacency
+matrix type to use, how many TILO runs to do, and the initial ordering
+to use.  Gaussian and k nearest neighbors adjacency matrices are
+supported, and if you want to use your own adjacency matrix you can do
+that, too.  Right now the TILO run with minimal width (widths sorted
+in nondecreasing order!)  over n_trials runs is chosen.
+
+Furthermore, you can get a bunch of information about the clustering,
+like the ordering, boundary, pinch ratios, and width:
+  
+    >>> c.ordering                  # doctest: +ELLIPSIS
+    array([15, 35, ..., 59, 86])
+    >>> c.boundary[49] == 0.0       # good separation between two blobs
+    True
+    >>> c.pinch_ratios              # note good separation
+    [0.0]
+    >>> list(c.width)               # doctest: +ELLIPSIS
+    [0.0, 6.0, ..., 50.0, 50.5]
+
 ## Classification
 
 **Note** that these classifiers aren't as well tested as the
