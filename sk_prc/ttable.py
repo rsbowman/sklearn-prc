@@ -17,7 +17,7 @@ class TextTable(object):
                 sign = ' '
             else:
                 sign = ''
-            mv = '{{:<{}{}{}}}'.format(sign, w, f.strip())
+            mv = '{{0:<{}{}{}}}'.format(sign, w, f.strip())
             try:
                 cells.append(mv.format(a))
             except ValueError:
