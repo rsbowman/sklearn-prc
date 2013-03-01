@@ -77,6 +77,14 @@ class ClusteringTests(TestCase):
             c = cl_algo(2, similarity.AdjacencyMatrix())
             c.fit(adj_matrix)
             self.assertAlmostEqual(c.pinch_ratios[0], 0.3 / 1.4)
+
+    def test_width_sorted(self):
+        data, labels = self.make_blobs(50)
+        for cl_algo in (PinchRatioClustering,
+                        PinchRatioCppClustering):
+            c = cl_algo(2, similarity.Gaussian())
+            c.fit(data)
+            assert_array_equal(c.width, np.sort(c.boundary)[::-1])
             
 class BinaryClassifierTests(TestCase):
     def setUp(self):
