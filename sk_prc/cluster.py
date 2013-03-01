@@ -105,7 +105,7 @@ class CutClustering(BaseEstimator, ClusterMixin):
             ordering = np.arange(len(X), dtype=int)
         for i in range(self.n_trials):
             final_ordering, bd, labels, prs = self._fit_once(X, ordering)
-            width = np.sort(bd)
+            width = np.sort(bd)[::-1]
             if lt_lex(width, min_width):
                 best_order = final_ordering
                 best_bd = bd
