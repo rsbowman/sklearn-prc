@@ -85,6 +85,16 @@ class ClusteringTests(TestCase):
             c = cl_algo(2, similarity.Gaussian())
             c.fit(data)
             assert_array_equal(c.width, np.sort(c.boundary)[::-1])
+
+    def test_refine(self):
+        data, labels = self.make_blobs(50)
+        for cl_algo in (PinchRatioCppClustering,
+                        PinchRatioClustering):
+            c1 = cl_algo(2, similarity.Gaussian(), refine_order=True)
+            c2 = cl_algo(2, similarity.Gaussian(), refine_order=False)
+            c1.fit(data)
+            c2.fit(data)
+            self.assertTrue(lt_lex(c1.width, c2.width))
             
 class BinaryClassifierTests(TestCase):
     def setUp(self):

@@ -86,11 +86,13 @@ def compute_pr_cluster_indices(ordering, boundary, n_clusters,
 ## base class
 class CutClustering(BaseEstimator, ClusterMixin):
     def __init__(self, n_clusters, adj_matrix_strategy,
-                 n_trials=1, initial_ordering=None):
+                 n_trials=1, initial_ordering=None,
+                 refine_order=True):
         self.n_clusters = n_clusters
         self.adj_matrix_strategy = adj_matrix_strategy
         self.n_trials = n_trials
         self.initial_ordering = initial_ordering
+        self.refine_order = refine_order
         self._pinch_ratios = None
         
     def fit(self, X):
@@ -154,17 +156,18 @@ def compute_thick_part_PR(boundary, C, i):
     
 class PinchRatioCppClustering(CutClustering):
     def __init__(self, n_clusters, adj_matrix_strategy,
-                 n_trials=1, initial_ordering=None):
+                 n_trials=1, initial_ordering=None,
+                 refine_order=True):
         super(PinchRatioCppClustering, self).__init__(
             n_clusters, adj_matrix_strategy,
-            n_trials, initial_ordering)
+            n_trials, initial_ordering, refine_order)
 
     def _fit_once(self, X, initial_order):
         adj_matrix = self.adj_matrix_strategy(X)
         order = prc.createOrder(initial_order)
         policy = prc.prcPolicyStruct()
         policy.prcRecurseTILO = True
-        policy.prcRefineTILO = True
+        policy.prcRefineTILO = self.refine_order
         labels = prc.ivec([0] * len(X))
         res = prc.pinchRatioClustering(adj_matrix, order,
                                        labels, self.n_clusters, policy)
@@ -178,10 +181,11 @@ class PinchRatioCppClustering(CutClustering):
 
 class PinchRatioClustering(CutClustering):
     def __init__(self, n_clusters, adj_matrix_strategy,
-                 n_trials=1, initial_ordering=None):
+                 n_trials=1, initial_ordering=None,
+                 refine_order=True):
         super(PinchRatioClustering, self).__init__(
             n_clusters, adj_matrix_strategy,
-            n_trials, initial_ordering)
+            n_trials, initial_ordering, refine_order)
         
     def _fit_once(self, X, initial_order):
         adj_matrix = self.adj_matrix_strategy(X)
@@ -191,8 +195,11 @@ class PinchRatioClustering(CutClustering):
 
         ordering = prc.createOrder(initial_order)
         policy = prc.tiloPolicyStruct()
-        prc.TILO(adj_matrix, ordering, policy)
-        
+        if self.refine_order:
+            prc.RefineTILO(adj_matrix, ordering, policy)
+        else:
+            prc.TILO(adj_matrix, ordering, policy)
+            
         boundary = np.fromiter(ordering.b.b, dtype=float)[:-1]
         ordering = np.fromiter(ordering.vdata, dtype=int)
 
