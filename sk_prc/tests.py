@@ -11,6 +11,7 @@ from classify import BinaryTiloClassifier, \
     PinchRatioCutStrategy, NearestCutStrategy, find_closest_min
 from cluster import pinch_ratios, normalized_ratios, sparse_ratios
 from cluster import PinchRatioClustering, PinchRatioCppClustering
+from cluster import IterativePinchRatioClustering
 from cluster import lt_lex
 
 import similarity
@@ -62,9 +63,13 @@ class ClusteringTests(TestCase):
     def test_use_adjacency_matrix(self):
         data, labels = self.make_blobs(50)
         adj_matrix = similarity.KNN(10)(data)
-        c = PinchRatioClustering(2, similarity.AdjacencyMatrix())
-        guessed_labels = c.fit_predict(adj_matrix)
-        assert_array_equal(labels, guessed_labels)
+        for cl_algo in (PinchRatioClustering,
+                        PinchRatioCppClustering,
+                        IterativePinchRatioClustering):
+            c = cl_algo(2, similarity.AdjacencyMatrix())
+            guessed_labels = c.fit_predict(adj_matrix)
+            self.assertEqual(metrics.adjusted_rand_score(
+                labels, guessed_labels), 1.0) # the labelings are equivalent
 
     def test_pinch_ratios(self):
         g = nx.Graph()
@@ -73,7 +78,8 @@ class ClusteringTests(TestCase):
                                    (0, 2, 0.6), (1, 3, 0.1),
                                    (3, 5, 0.75), (4, 5, 0.85)])
         adj_matrix = np.array(nx.adjacency_matrix(g))
-        for cl_algo in (PinchRatioClustering, PinchRatioCppClustering):
+        for cl_algo in (PinchRatioClustering, PinchRatioCppClustering,
+                        IterativePinchRatioClustering):
             c = cl_algo(2, similarity.AdjacencyMatrix())
             c.fit(adj_matrix)
             self.assertAlmostEqual(c.pinch_ratios[0], 0.3 / 1.4)
@@ -81,7 +87,8 @@ class ClusteringTests(TestCase):
     def test_width_sorted(self):
         data, labels = self.make_blobs(50)
         for cl_algo in (PinchRatioClustering,
-                        PinchRatioCppClustering):
+                        PinchRatioCppClustering,
+                        IterativePinchRatioClustering):
             c = cl_algo(2, similarity.Gaussian())
             c.fit(data)
             assert_array_equal(c.width, np.sort(c.boundary)[::-1])
@@ -95,6 +102,21 @@ class ClusteringTests(TestCase):
             c1.fit(data)
             c2.fit(data)
             self.assertTrue(lt_lex(c1.width, c2.width))
+
+    def test_deterministic(self):
+        data, labels = self.make_blobs(50)
+        initial_order = np.arange(50)
+        np.random.shuffle(initial_order)
+        initial_order2 = initial_order.copy()
+        
+        for cl_algo in (PinchRatioCppClustering,
+                        PinchRatioClustering):
+            c1 = cl_algo(2, similarity.Gaussian(), 5, initial_order)
+            c2 = cl_algo(2, similarity.Gaussian(), 5, initial_order)
+            c1.fit(data)
+            c2.fit(data)
+            assert_array_equal(initial_order, initial_order2)
+            assert_array_equal(c1.ordering, c2.ordering)
             
 class BinaryClassifierTests(TestCase):
     def setUp(self):

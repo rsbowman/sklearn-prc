@@ -91,7 +91,10 @@ class CutClustering(BaseEstimator, ClusterMixin):
         self.n_clusters = n_clusters
         self.adj_matrix_strategy = adj_matrix_strategy
         self.n_trials = n_trials
-        self.initial_ordering = initial_ordering
+        if initial_ordering is not None: # copy array
+            self.initial_ordering = np.array(initial_ordering)
+        else:
+            self.initial_ordering = None
         self.refine_order = refine_order
         self._pinch_ratios = None
         
@@ -142,6 +145,69 @@ class CutClustering(BaseEstimator, ClusterMixin):
     def width(self):
         return self._width
 
+class IterativePinchRatioClustering(BaseEstimator, ClusterMixin):
+    def __init__(self, n_clusters, adj_matrix_strategy, initial_ordering=None,
+                 max_iterations=20, number_of_clustering=40,
+                 convergence_threshold=1):
+        self.n_clusters = n_clusters
+        self.adj_matrix_strategy = adj_matrix_strategy
+        if initial_ordering is not None:
+            self.initial_ordering = np.array(initial_ordering)
+        else:
+            self.initial_ordering = None
+        self.initial_ordering = initial_ordering
+        self.max_iterations = max_iterations
+        self.number_of_clustering = number_of_clustering
+        self.convergence_threshold = convergence_threshold
+
+    def fit(self, X):
+        adj_matrix = self.adj_matrix_strategy(X)
+        if self.initial_ordering is None:
+            ordering = np.arange(len(X), dtype=int)
+        else:
+            ordering = self.initial_ordering
+            assert len(ordering) == len(X), \
+                "initial_ordering has wrong length"
+        order = prc.createOrder(ordering)
+        labels = prc.ivec([0]*len(X))
+        policy = prc.iprPolicyStruct()
+        policy.iprNumberOfClustering = self.number_of_clustering
+        policy.iprMaxIterations = self.max_iterations
+        policy.iprConvergenceThreshold = self.convergence_threshold
+        res = prc.ipr(adj_matrix, order, labels,
+                      self.n_clusters, policy)
+        self._ordering = np.fromiter(order.vdata, dtype=int)
+        ## calculate boundaries of original matrix w/ new ordering
+        prc.calcBoundaries(adj_matrix, order)
+        raw_boundaries = order.b.b
+        self._boundary = np.fromiter(raw_boundaries,
+                                     dtype=float)[:-1] # XXX: slice needed?
+        self._width = np.sort(self._boundary)[::-1]
+        self.labels_ = np.fromiter(labels, dtype=int)
+        self._pinch_ratios, _ = compute_pr_cluster_indices(
+            self._ordering, self._boundary, self.n_clusters,
+            compute_thick_part_PR)
+        
+    @property
+    def labels(self):
+        return self.labels_
+        
+    @property
+    def pinch_ratios(self):
+        return self._pinch_ratios 
+
+    @property
+    def ordering(self):
+        return self._ordering
+
+    @property
+    def boundary(self):
+        return self._boundary
+
+    @property
+    def width(self):
+        return self._width
+        
 def lt_lex(a, b):
     """ return true if array a compares < to array b lexicographically 
     """
@@ -166,7 +232,7 @@ class PinchRatioCppClustering(CutClustering):
         adj_matrix = self.adj_matrix_strategy(X)
         order = prc.createOrder(initial_order)
         policy = prc.prcPolicyStruct()
-        policy.prcRecurseTILO = True
+        #policy.prcRecurseTILO = True
         policy.prcRefineTILO = self.refine_order
         labels = prc.ivec([0] * len(X))
         res = prc.pinchRatioClustering(adj_matrix, order,
@@ -323,15 +389,17 @@ def main(argv):
     knn_adj_matrix = similarity.KNN(args.k)(data)
     
     prc_classifiers = [
+        ("IPR", IterativePinchRatioClustering(
+           n_clusters, similarity.AdjacencyMatrix())),
         ('PRC', PinchRatioClustering(
-            n_clusters, similarity.AdjacencyMatrix(), n_trials)),
+           n_clusters, similarity.AdjacencyMatrix(), n_trials)),
         ('PRC-C++', PinchRatioCppClustering(
-            n_clusters, similarity.AdjacencyMatrix(), n_trials)),
+           n_clusters, similarity.AdjacencyMatrix(), n_trials)),
         ('Norm', NormalizedCutClustering(
-            n_clusters, similarity.AdjacencyMatrix(), n_trials)),
+           n_clusters, similarity.AdjacencyMatrix(), n_trials)),
         ('Sparse', SparseCutClustering(
-            n_clusters, similarity.AdjacencyMatrix(), n_trials)),
-        ]
+           n_clusters, similarity.AdjacencyMatrix(), n_trials)),
+    ]
     comparison_classifiers = [
         ('Affinity', cluster.AffinityPropagation().fit(data)),
         ('KMeans', cluster.KMeans(n_clusters).fit(data)),
@@ -384,8 +452,11 @@ def main(argv):
             for init_method in seed_clusterers:
                 seeded_order = create_seed_order(data, init_method)
                 classifier = clone(cl_base)
-                classifier.set_params(n_trials=1,
-                                      initial_ordering=seeded_order)
+                try:
+                    classifier.set_params(n_trials=1)
+                except:
+                    pass
+                classifier.set_params(initial_ordering=seeded_order)
                 classifier.fit(adj_matrix)
                 initialized_scores.append(
                     metrics.adjusted_rand_score(classifier.labels_, labels))
